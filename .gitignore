@@ -1,0 +1,23 @@
+node_modules/
+.next/
+.next-*/
+out/
+build/
+dist/
+
+# Local SQLite database (contains all personal/work data) — never commit
+omnitool.db
+omnitool.db-shm
+omnitool.db-wal
+omnitool.db-journal
+
+# Server-side secret used to encrypt calendar tokens at rest — never commit
+.omnitool_secret
+
+# Environment overrides (may contain Microsoft Graph client secret, etc.)
+.env
+.env.local
+.env*.local
+
+npm-debug.log*
+.DS_Store

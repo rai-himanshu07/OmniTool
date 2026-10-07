@@ -2,7 +2,8 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { LogOut } from 'lucide-react';
+import { LogOut, Info } from 'lucide-react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import NotificationPanel from '@/components/NotificationPanel';
 import { LockScreenButton } from '@/components/ScreenLockProvider';
@@ -27,8 +28,8 @@ export default function AuthenticatedShell({ children }: { children: ReactNode }
   return <div className={`app-shell ${navigationCollapsed ? 'is-nav-collapsed' : ''}`}>
     <Navigation role={user?.role} collapsed={navigationCollapsed} onToggle={() => setNavigationCollapsed(!navigationCollapsed)} />
     <main className="app-main">
-      <header className="utility-bar"><span>Workspace</span><div className="utility-actions"><span>{user?.name}</span>{user?.role !== 'viewer' && <NotificationPanel />}<LockScreenButton /><button type="button" className="notification-trigger" title="Sign out" aria-label="Sign out" onClick={async () => { if (user) sessionStorage.removeItem(`omnitool:unlocked:${user.id}`); await authClient.signOut(); window.location.assign('/sign-in'); }}><LogOut size={18} /></button></div></header>
-      {children}
+      <header className="utility-bar"><div className="utility-start"><Link href="/guide" className="notification-trigger guide-trigger" title="OmniTool guide" aria-label="OmniTool guide"><Info size={18} /></Link><span>Workspace</span></div><div className="utility-actions"><span>{user?.name}</span>{user?.role !== 'viewer' && <NotificationPanel />}<LockScreenButton /><button type="button" className="notification-trigger" title="Sign out" aria-label="Sign out" onClick={async () => { if (user) sessionStorage.removeItem(`omnitool:unlocked:${user.id}`); await authClient.signOut(); window.location.assign('/sign-in'); }}><LogOut size={18} /></button></div></header>
+      <div className="app-content">{children}</div>
       <footer className="app-footer"><span>OmniTool contributors</span><a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">GPL-3.0-only</a><span>No warranty</span></footer>
       <UndoNotice />
       <ConnectionStatus />

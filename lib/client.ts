@@ -9,6 +9,30 @@ export function usePanelCollapsed(key: string) {
   return [collapsed, update] as const;
 }
 
+export function useColumnWidths(key: string, columns: { id: string; width: number }[]) {
+  const [saved, setSaved] = useState<{ key: string; values: Record<string, number> }>({ key: '', values: {} });
+  const storageKey = `omnitool:columns:${key}`;
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      const values = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === 'number' && Number.isFinite(value) && value >= 88 && value <= 800)) as Record<string, number> : {};
+      setSaved({ key: storageKey, values });
+    } catch { setSaved({ key: storageKey, values: {} }); }
+  }, [storageKey]);
+  const widths = columns.map((column) => saved.key === storageKey ? saved.values[column.id] || column.width : column.width);
+  const setWidth = (id: string, width: number) => {
+    if (!Number.isFinite(width)) return;
+    setSaved((current) => {
+      const values = { ...(current.key === storageKey ? current.values : {}), [id]: Math.max(88, Math.min(800, Math.round(width))) };
+      try { localStorage.setItem(storageKey, JSON.stringify(values)); } catch {}
+      return { key: storageKey, values };
+    });
+  };
+  const reset = () => { setSaved({ key: storageKey, values: {} }); try { localStorage.removeItem(storageKey); } catch {} };
+  return { widths, setWidth, reset };
+}
+
 export async function requestJson<T = any>(url: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(url, options); window.dispatchEvent(new Event('omnitool:connection-restored')); }

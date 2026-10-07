@@ -54,6 +54,21 @@ Restore only writes to a **new** database path and will not overwrite existing d
 - **File Views:** Import read-only `.xlsx` or `.csv` tracker snapshots. Select sheets, search/filter columns, sort, hide columns, and page through rows. New trackers are private; owners may share, refresh, or archive them. Map a stable, unique row-ID column, title, optional ISO/Excel-date due date, and waiting-on column. Explicitly convert up to 100 selected rows to shared workspace tasks or follow-ups. Repeated conversion and refresh preserve links without creating duplicates or overwriting work. A mapped sheet/header-layout change requires a new tracker. Limits: 10 MB upload, 50 MB ZIP expansion, 20 sheets, 10000 data rows and 100 columns per sheet, 200000 cells total. Macros are rejected, formulas are not evaluated, external links are not fetched, and legacy `.xls`/`.xlsb` files must first be saved as XLSX or CSV. This is not a spreadsheet editor or bidirectional sync.
 - **Day Planner and Unblock Radar:** Set task estimates in Task Detail; older/unestimated tasks start at 30 minutes. The planner shows timezone-aware working-day capacity, counts overlapping meetings only once, and suggests ready work that fits free windows. Add individual suggestions to Focus explicitly. Radar ranks active dependency chains by downstream impact and previews which tasks would lose their dependency blockers if an item completed. Previews never write changes and do not imply that unrelated waiting states or future deliveries are resolved. No AI provider is required.
 
+## Secure Vault
+
+Secure Vault is a separate space for sensitive personal or client notes, available to workspace Admins. It is not an ordinary note marked private: titles and contents are encrypted on your device before they are stored, using AES-256-GCM with a key derived from the separate Vault master password. Normal sign-in does not unlock the Vault, and the server does not receive that password or the decryption key.
+
+1. Open Secure Vault and choose a strong master password when initializing it.
+2. Unlock with the master password each time you return, then create or edit secure notes and use Encrypt & Save.
+3. Use Lock Vault when finished. Leaving the Vault locks it; a backgrounded tab also auto-locks after a delay. Locking clears displayed notes and unsaved plaintext drafts.
+4. To change the master password, unlock first and use Change Password. Existing notes are re-encrypted with the new password.
+
+Keep the master password somewhere safe outside OmniTool. There is no recovery of old contents without it. Forgot vault password offers an explicitly destructive reset after account-password verification and typing `DELETE VAULT`; this creates an empty active Vault. It does not decrypt old notes or remove existing backup copies. Full recovery backups preserve encrypted Vault records, but the master password is still required. JSON and Work Report exports exclude Vault contents.
+
+## In-App Guide
+
+Choose the circular **i** icon at the top-left of the workspace header, or open `/guide`. The searchable guide explains each app section, a simple daily routine, and common actions in non-technical language. Report/File Views column edges support dragging or keyboard arrow adjustments; Reset widths restores the defaults, and widths are remembered on this device.
+
 ## Recovery
 
 | Problem | Recovery | Boundary |

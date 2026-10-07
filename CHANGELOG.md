@@ -4,6 +4,8 @@
 
 ### Added
 
+- Searchable, non-technical in-app guide with a workspace-header information link.
+- Device-local drag/keyboard column-width controls and reset for Work Reports and File Views.
 - Consolidated, all-time Work Reports for projects and tasks, structured filters, date ranges, and CSV/XLSX extraction.
 - Project completion and reopening, actual-delivery recording, and explicit cadence pause without silently completing child commitments.
 - Persistent global navigation collapse and independent notebook/file hierarchy collapse controls.
@@ -19,6 +21,8 @@
 
 ### Fixed
 
+- Work Report Type column inheriting the narrow selection-checkbox width.
+- Legal footer floating directly under short page content instead of staying at the page bottom.
 - Search response contracts and record-specific navigation, including notebook-page search.
 - Rejected/stale saves appearing successful and explicit editor exits losing drafts.
 - Ended events appearing in Upcoming; archived work generating active attention.

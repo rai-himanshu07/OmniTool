@@ -67,7 +67,7 @@ Keep the master password somewhere safe outside OmniTool. There is no recovery o
 
 ## In-App Guide
 
-Choose the circular **i** icon at the top-left of the workspace header, or open `/guide`. The searchable guide explains each app section, a simple daily routine, and common actions in non-technical language. Report/File Views column edges support dragging or keyboard arrow adjustments; Reset widths restores the defaults, and widths are remembered on this device.
+Choose the circular **i** icon in the workspace header actions, immediately before the lock control, or open `/guide`. The searchable guide explains each app section, a simple daily routine, and common actions in non-technical language. Report/File Views column edges support dragging or keyboard arrow adjustments; Reset widths restores the defaults, and widths are remembered on this device.
 
 ## Recovery
 

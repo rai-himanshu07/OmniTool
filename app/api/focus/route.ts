@@ -15,10 +15,10 @@ type Candidate = { entity_type: 'task' | 'followup'; entity_id: string; title: s
 function activeEntity(db: ReturnType<typeof getDb>, workspaceId: string, type: string, id: string): Candidate | undefined {
   if (type === 'task') return db.prepare(`SELECT 'task' AS entity_type, t.id AS entity_id, t.title, p.name AS project_name,
     t.due_date, t.status FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
-    WHERE t.id = ? AND t.workspace_id = ? AND t.status NOT IN ('done', 'cancelled')`).get(id, workspaceId) as Candidate | undefined;
+    WHERE t.id = ? AND t.workspace_id = ? AND t.archived = 0 AND t.status NOT IN ('done', 'cancelled')`).get(id, workspaceId) as Candidate | undefined;
   if (type === 'followup') return db.prepare(`SELECT 'followup' AS entity_type, f.id AS entity_id, f.title, p.name AS project_name,
     f.expected_date AS due_date, f.status FROM followups f LEFT JOIN projects p ON p.id = f.project_id
-    WHERE f.id = ? AND f.workspace_id = ? AND f.status IN ('waiting', 'escalated')`).get(id, workspaceId) as Candidate | undefined;
+    WHERE f.id = ? AND f.workspace_id = ? AND f.archived = 0 AND f.status IN ('waiting', 'escalated')`).get(id, workspaceId) as Candidate | undefined;
   return undefined;
 }
 
@@ -72,12 +72,12 @@ export async function GET(request: Request) {
       SELECT 'task' AS entity_type, t.id AS entity_id, t.title, p.name AS project_name, t.due_date, t.status,
         CASE WHEN t.due_date < ? THEN 0 WHEN t.due_date = ? THEN 1 ELSE 2 END AS rank
       FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
-      WHERE t.workspace_id = ? AND t.status NOT IN ('done', 'cancelled') AND (? = '' OR t.title LIKE ? OR p.name LIKE ?)
+      WHERE t.workspace_id = ? AND t.archived = 0 AND t.status NOT IN ('done', 'cancelled') AND (? = '' OR t.title LIKE ? OR p.name LIKE ?)
       UNION ALL
       SELECT 'followup', f.id, f.title, p.name, f.expected_date, f.status,
         CASE WHEN f.expected_date < ? THEN 0 WHEN f.expected_date = ? THEN 1 ELSE 2 END
       FROM followups f LEFT JOIN projects p ON p.id = f.project_id
-      WHERE f.workspace_id = ? AND f.status IN ('waiting', 'escalated') AND (? = '' OR f.title LIKE ? OR p.name LIKE ?)
+      WHERE f.workspace_id = ? AND f.archived = 0 AND f.status IN ('waiting', 'escalated') AND (? = '' OR f.title LIKE ? OR p.name LIKE ?)
     ) ORDER BY rank, due_date IS NULL, due_date, title LIMIT 40`)
       .all(date, date, workspaceId, query, term, term, date, date, workspaceId, query, term, term) as Candidate[];
     return NextResponse.json({ date, items, carryover, candidates });

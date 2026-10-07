@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Clock, Plus, User, Check, AlertTriangle, Timer, Pencil, RotateCcw, Send, Target, FolderKanban, ArrowDownWideNarrow } from 'lucide-react';
+import { useUnsavedChanges } from '@/lib/client';
 
 interface Followup {
   id: string;
@@ -66,6 +67,7 @@ export default function FollowupsView() {
   const [projectId, setProjectId] = useState('');
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState('');
+  useUnsavedChanges(showAddForm && (!!title || !!notes || !!waitingOnPerson));
 
   const editFollowup = (followup: Followup) => {
     setEditingId(followup.id);

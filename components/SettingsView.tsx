@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Settings, Download, Database, Shield, Monitor, CalendarDays, CheckCircle2, AlertTriangle, RefreshCw, Unlink, LockKeyhole, UsersRound, Copy } from 'lucide-react';
+import RecoveryPanel from '@/components/RecoveryPanel';
 
 interface CalendarConfig {
   configured: boolean;
@@ -37,6 +38,7 @@ type PersonOption = { id: string; name: string; active: number };
 
 export default function SettingsView() {
   const searchParams = useSearchParams();
+  const [section, setSection] = useState(searchParams?.get('google_calendar') || searchParams?.get('calendar') || searchParams?.get('google_error') || searchParams?.get('calendar_error') ? 'integrations' : 'access');
   const [calConfig, setCalConfig] = useState<CalendarConfig | null>(null);
   const [googleConfig, setGoogleConfig] = useState<GoogleConfig | null>(null);
   const [googleClientId, setGoogleClientId] = useState('');
@@ -282,9 +284,9 @@ export default function SettingsView() {
   };
 
   return (
-    <div>
+    <div className="configuration-page">
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Settings & Backup</h1>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Settings</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           Workspace configuration and data export
         </p>
@@ -305,8 +307,9 @@ export default function SettingsView() {
       {searchParams?.get('google_calendar') === 'connected' && <p role="status" className="card" style={{ marginBottom: '1rem' }}>Google Calendar connected.</p>}
       {searchParams?.get('google_error') && <p role="alert" className="card" style={{ marginBottom: '1rem', color: 'var(--danger)' }}>{searchParams.get('google_error')}</p>}
 
-      <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem' }}>
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
+      <div className="tabs configuration-tabs" role="tablist" aria-label="Workspace settings">{[{ value: 'access', label: 'Workspace Access', icon: UsersRound }, { value: 'security', label: 'Security', icon: Shield }, { value: 'integrations', label: 'Integrations', icon: CalendarDays }, { value: 'data', label: 'Data & Recovery', icon: Download }, { value: 'system', label: 'System', icon: Database }].map(({ value, label, icon: Icon }) => <button className={`tab ${section === value ? 'active' : ''}`} role="tab" aria-selected={section === value} key={value} onClick={() => setSection(value)}><Icon size={16} /> {label}</button>)}</div>
+      <div className="configuration-content">
+        <section className="configuration-section" hidden={section !== 'access'}>
           <div className="card-title"><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><UsersRound size={18} /> Workspace access</span></div>
           <div className="entity-list">{accounts.map((account) => <div className="work-row" key={account.id}>
             <div className="work-row-content"><strong>{account.name}</strong><small>{account.email}</small></div>
@@ -323,7 +326,7 @@ export default function SettingsView() {
           {invitations.filter((invitation) => !invitation.accepted_at && invitation.expires_at > new Date().toISOString()).map((invitation) => <div className="work-row" key={invitation.id}><span className="work-row-content"><strong>{invitation.email}</strong><small>{invitation.role} · expires {new Date(invitation.expires_at).toLocaleString()}</small></span><button type="button" className="btn-secondary" onClick={() => revokeInvitation(invitation.id)}>Revoke</button></div>)}
           {accessStatus && <p role="status" className="work-error">{accessStatus}</p>}
         </section>
-        <section className="card" style={{ gridColumn: '1 / -1' }} id="screen-lock">
+        <section className="configuration-section" hidden={section !== 'security'} id="screen-lock">
           <div className="card-title"><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><LockKeyhole size={18} /> Screen Lock</span><span className="badge">{pinEnabled ? 'On' : 'Off'}</span></div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>Convenience lock for this browser. It does not restrict API access or encrypt workspace data.</p>
           <form onSubmit={savePin}>
@@ -341,7 +344,7 @@ export default function SettingsView() {
             </div>
           </form>
         </section>
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
+        <section className="configuration-section" hidden={section !== 'integrations'}>
           <div className="card-title">AI provider <span className="badge">Optional</span></div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
             Configure an OpenAI-compatible API or local model for optional Inbox and Week Review drafts. Data is sent only when you request a suggestion; saving remains manual.
@@ -360,7 +363,7 @@ export default function SettingsView() {
             {aiStatus && <p role="status" style={{ marginTop: '0.75rem', color: 'var(--text-secondary)' }}>{aiStatus}</p>}
           </form>
         </section>
-        <div className="card">
+        <div className="configuration-section" hidden={section !== 'data'}>
           <div className="card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Download size={20} color="var(--primary)" />
@@ -368,7 +371,7 @@ export default function SettingsView() {
             </div>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-            JSON export covers workspace records but is not a full recovery backup. Use the backup, verify, and restore CLI commands to preserve accounts, encrypted data, and server credentials.
+            JSON snapshots contain structured records. Full recovery backups preserve accounts, encrypted data, and server credentials.
           </p>
           <button className="btn-capture" onClick={handleExportBackup}>
             <Download size={16} />
@@ -376,7 +379,8 @@ export default function SettingsView() {
           </button>
         </div>
 
-        <div className="card" style={{ gridColumn: 'span 2' }}>
+        <div hidden={section !== 'data'}><RecoveryPanel /></div>
+        <div className="configuration-section" hidden={section !== 'integrations'}>
           <div className="card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <CalendarDays size={20} color="var(--emerald)" />
@@ -447,7 +451,7 @@ export default function SettingsView() {
           )}
         </div>
 
-        <section className="card" style={{ gridColumn: 'span 2' }}>
+        <section className="configuration-section" hidden={section !== 'integrations'}>
           <div className="card-title"><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CalendarDays size={20} /> Google Calendar</span><span className="badge">{googleConfig?.connected ? 'Connected' : 'Optional'}</span></div>
           {googleConfig?.connected ? (
             <div>
@@ -472,7 +476,7 @@ export default function SettingsView() {
           {googleStatus && <p role="status" style={{ color: 'var(--text-secondary)' }}>{googleStatus}</p>}
         </section>
 
-        <div className="card" id="developer">
+        <div className="configuration-section" hidden={section !== 'system'} id="developer">
           <div className="card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Database size={20} color="var(--emerald)" />
@@ -486,7 +490,7 @@ export default function SettingsView() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="configuration-section" hidden={section !== 'security'}>
           <div className="card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Shield size={20} color="var(--purple)" />

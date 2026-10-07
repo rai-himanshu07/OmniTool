@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Unlock, Key, Plus, ShieldCheck, Pencil, Trash2, KeyRound, X, Save } from 'lucide-react';
 import { deriveVaultKey, encryptText, decryptText, generateSaltHex } from '@/lib/services/vaultCrypto';
+import { requestJson, useUnsavedChanges } from '@/lib/client';
 
 const VAULT_CHECK_PLAINTEXT = 'omnitool_vault_valid';
 const NEW_VAULT_ITERATIONS = 600000;
@@ -49,6 +50,20 @@ export default function VaultView() {
   const [changePasswordError, setChangePasswordError] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [accountPassword, setAccountPassword] = useState('');
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  useUnsavedChanges(!!newTitle || !!newContent || editingId !== null);
+
+  const resetVault = async () => {
+    setLoading(true); setError('');
+    try {
+      await requestJson('/api/vault/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: accountPassword, confirmation: resetConfirmation }) });
+      lockVault(); setIsInitialized(false); setSalt(''); setShowReset(false); setAccountPassword(''); setResetConfirmation('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Reset failed'); }
+    finally { setLoading(false); }
+  };
 
   const cryptoKeyRef = useRef<CryptoKey | null>(null);
   const hiddenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,6 +80,10 @@ export default function VaultView() {
     setNotes([]);
     setEditingId(null);
     setShowChangePassword(false);
+    setShowAddForm(false);
+    setNewTitle(''); setNewContent(''); setEditTitle(''); setEditContent('');
+    setCurrentPasswordInput(''); setNewPasswordInput(''); setNewPasswordConfirm('');
+    setChangePasswordError(''); setChangePasswordSuccess(false);
   };
 
   // Locks the moment the user navigates away from the vault (component
@@ -127,7 +146,7 @@ export default function VaultView() {
         const derivedKey = await deriveVaultKey(password, currentSalt, NEW_VAULT_ITERATIONS);
         const testEnc = await encryptText(VAULT_CHECK_PLAINTEXT, derivedKey);
 
-        await fetch('/api/vault/meta', {
+        await requestJson('/api/vault/meta', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -207,7 +226,7 @@ export default function VaultView() {
       const encTitle = await encryptText(newTitle.trim(), cryptoKey);
       const encContent = await encryptText(newContent.trim(), cryptoKey);
 
-      await fetch('/api/vault/notes', {
+      await requestJson('/api/vault/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -223,7 +242,7 @@ export default function VaultView() {
       setShowAddForm(false);
       loadVaultNotes(cryptoKey);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Could not save secure note');
     }
   };
 
@@ -238,7 +257,7 @@ export default function VaultView() {
     try {
       const encTitle = await encryptText(editTitle.trim(), cryptoKey);
       const encContent = await encryptText(editContent.trim(), cryptoKey);
-      await fetch(`/api/vault/notes/${editingId}`, {
+      await requestJson(`/api/vault/notes/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +270,7 @@ export default function VaultView() {
       setEditingId(null);
       loadVaultNotes(cryptoKey);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Could not save secure note');
     }
   };
 
@@ -259,10 +278,10 @@ export default function VaultView() {
     if (!cryptoKey) return;
     if (!confirm('Permanently delete this secure note? This cannot be undone.')) return;
     try {
-      await fetch(`/api/vault/notes/${id}`, { method: 'DELETE' });
+      await requestJson(`/api/vault/notes/${id}`, { method: 'DELETE' });
       loadVaultNotes(cryptoKey);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Could not delete secure note');
     }
   };
 
@@ -398,7 +417,7 @@ export default function VaultView() {
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
             Enter your master password. Keys are derived locally on your device using PBKDF2 with SHA-256. There is no
-            recovery if this password is forgotten — that is what makes it zero-knowledge.
+            recovery of existing contents without this password. Resetting creates an empty vault and permanently deletes the active encrypted notes.
           </p>
 
           <form onSubmit={handleUnlock}>
@@ -418,9 +437,17 @@ export default function VaultView() {
               <span>{loading ? 'Deriving Key...' : isInitialized ? 'Unlock Vault' : 'Create & Encrypt Vault'}</span>
             </button>
           </form>
+          {isInitialized && <button type="button" className="btn-secondary" onClick={() => setShowReset(!showReset)} style={{ marginTop: '1rem' }}>Forgot vault password?</button>}
+          {showReset && <div style={{ marginTop: '1rem', textAlign: 'left' }}>
+            <p role="alert">All active vault notes will be permanently lost. Existing backups are not deleted. This does not recover your notes.</p>
+            <label>Account password<input className="input-field" type="password" autoComplete="current-password" value={accountPassword} onChange={(event) => setAccountPassword(event.target.value)} /></label>
+            <label>Type DELETE VAULT<input className="input-field" value={resetConfirmation} onChange={(event) => setResetConfirmation(event.target.value)} /></label>
+            <button type="button" className="btn-secondary" disabled={loading || resetConfirmation !== 'DELETE VAULT' || !accountPassword} onClick={resetVault}>Permanently reset vault</button>
+          </div>}
         </div>
       ) : (
         <div>
+          {error && <p role="alert" className="work-error">{error}</p>}
           {showChangePassword && (
             <div className="card" style={{ marginBottom: '1.5rem', borderColor: 'rgba(168, 85, 247, 0.3)' }}>
               <div className="card-title" style={{ color: 'var(--purple)' }}>

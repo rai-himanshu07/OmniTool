@@ -1732,7 +1732,109 @@ The core promise is:
 
 ---
 
-# 54. Research References
+# 54. Approved Operational Addendum (2026-10-07)
+
+These requirements supplement the v0.1 scope. Recovery, safe lifecycle actions, interoperability, and connected daily workflows take precedence over adding infrastructure or mandatory AI.
+
+## 54.1 Recovery Matrix
+
+Authentication, screen lock, Vault encryption, and installation recovery are independent:
+
+| Failure | Required flow | Data consequence |
+| --- | --- | --- |
+| Forgotten login password | Host operator resets a local account using a masked interactive prompt | Revoke sessions; do not change Vault encryption or PIN |
+| Forgotten PIN | Verify the signed-in account password and remove that account's PIN | Ordinary data and other accounts are unchanged |
+| Forgotten Vault password | Account-password verification plus explicit DELETE VAULT confirmation | Delete active encrypted notes and metadata; initialize an empty vault |
+| Lost installation | Inspect and verify a complete backup, then restore to a fresh destination | Never overwrite the active database or mismatched server secret |
+
+Vault reset is not decryption or content recovery. Optional future recovery keys require deliberate provisioning and key wrapping; no recovery key is implied by account-password reset. Existing backup copies are unaffected by active-Vault reset. Rate-limit failed account reauthentication and reject cross-origin mutations.
+
+Full backup includes SQLite and its server secret; JSON export remains a portability format, not installation recovery. Show creation/verification timestamps. Require Admin reauthentication for sensitive backup operations. Keep browser restore staged and provide explicit host activation instructions. Do not silently switch the live database. Backups are sensitive and not automatically purged.
+
+## 54.2 Lifecycle and Save Contracts
+
+- Keep complete, cancel, archive, Trash, restore, and permanent-delete semantics distinct.
+- Archive affects the selected record, not unrelated linked commitments.
+- Normal task/note/project/local-event deletion must be recoverable, including cascading children and detached references where still valid.
+- Restore is atomic. Conflicting IDs or missing parents produce a visible refusal, never a partial restore.
+- Trash is scoped to the deleting account. Its configurable review age defaults to 30 days; expiry is not automatic destruction.
+- Permanent deletion requires explicit confirmation and account reauthentication; backup copies retain their own lifecycles.
+- Failed saves retain edits and show an actionable error. Provide unsaved-change guards and stale-tab conflicts for saved editors.
+- Connection warnings do not claim offline persistence or eventual sync. Retrying a draft is explicit.
+- Archived or deleted work must not appear as active work or generate fresh attention notifications.
+
+## 54.3 Excel Interoperability
+
+Add a bounded File Views module without becoming a file-management system or spreadsheet editor:
+
+- Read-only XLSX/CSV snapshots; preserve source filename and last-import timestamp.
+- Private-by-default trackers; explicit shared visibility and owner-controlled refresh/mapping.
+- Sheet selection, search/column filtering, sorting, visible-column toggles, sticky headers, and pagination.
+- Saved mappings for stable unique row ID, title, optional due date, and waiting-on person.
+- Explicit selected-row conversion to shared workspace tasks/follow-ups with source provenance.
+- Duplicate-safe conversion and refresh; do not overwrite linked work or infer deletions from disappearing rows.
+- Reject mapped sheet/header-layout changes rather than silently remapping row identities.
+- No macro execution, formula evaluation, external-link fetching, or bidirectional editing.
+- Initial supported formats are XLSX/CSV, not legacy XLS/XLSB or macro-enabled workbooks. Legacy files require external conversion.
+- Enforce file, archive-expansion, sheet, row, column, cell, and batch-conversion limits before persistence.
+
+The external workbook remains authoritative for its source data. Converted commitments are explicitly managed in OmniTool thereafter.
+
+## 54.4 Ownership and Connected Work
+
+- My Work supports Assigned to me, Following, and Workspace modes, plus project/client/person/priority/waiting filters.
+- Saved views and following are account-owned; bulk changes are validated and atomic.
+- Ordinary notes/notebooks can be private without requiring the Secure Vault. Existing shared records remain shared after upgrade.
+- Enforce visibility in APIs, nested routes, search, linked project/task context, and exports. Hiding controls is insufficient.
+- Search supports structured relationship filters and opens the exact matching record, including notebook pages.
+- Meeting outcomes create accepted notes, tasks, or follow-ups with navigable origin links.
+- Keep imported meetings provider-owned; default Upcoming excludes ended events and retains ongoing ones. History/range views preserve available cache history; provider cache pruning is not document deletion.
+- Surface conflicts, stale calendar cache, and sync failures.
+
+## 54.5 Reminder and Capacity Contracts
+
+- Account-scoped reminders, notification read/snooze state, categories, desktop preference, quiet hours/timezone, and meeting lead time.
+- State the delivery contract: in-app/browser alerts require an open application. Closed-app delivery requires a separately justified future scheduler/push design.
+- Use lightweight task effort estimates, configurable working windows/days off, timezone-aware boundaries, and a daily work budget.
+- Count overlapping meetings once; reveal workload exceeding capacity rather than merely counting tasks.
+- Suggested work must fit available windows and respect blocking dependencies. Adding to Focus remains explicit.
+- Unblock Radar ranks downstream dependency impact and supports non-persistent completion previews. Distinguish dependency release from actual task completion, external waiting, or guaranteed project delivery.
+- No AI service is necessary for planning, impact analysis, or any recovery workflow.
+
+## 54.6 End-to-End Acceptance Scenarios
+
+1. Capture a commitment, convert it to account-owned work, find it in My Work, open it from Search, link context, and complete it.
+2. Create a private note/notebook; another account cannot list, search, open nested pages, or retrieve it through project context/export. Explicit sharing changes that behavior.
+3. Select several work items; reschedule/reassign them atomically. An invalid selected item prevents the entire batch. Save and reopen the same filter view in a later session.
+4. Delete a task with subtasks/dependencies; Undo/Trash restores linked data. A conflicting restore is rejected with no partial changes.
+5. An ended event is absent from Upcoming but present in Past; an ongoing event remains Upcoming. Meeting outcomes retain the source and do not modify external providers.
+6. A rejected save or stale-tab edit leaves the draft visible. A disconnected browser does not report a successful save.
+7. Wrong account passwords, insufficient roles, missing sessions, cross-origin mutations, and missing destructive confirmations refuse recovery without deleting records.
+8. Create/download a full backup, verify checksums/integrity, inspect an uploaded archive, and prepare a fresh restore. The active database and server secret remain untouched.
+9. Import XLSX/quoted CSV, map columns, convert selected rows, refresh, and repeat conversion without duplicates. Duplicate IDs, changed mappings, macros, unsafe ZIP entries, and oversized files fail before partial persistence.
+10. Personal reminders and notification read/snooze preferences do not affect another account. Quiet hours suppress desktop delivery, not underlying records.
+11. Overlapping meetings, timezone boundaries, weekends, task estimates, blocking dependencies, and cyclic legacy graphs produce bounded planning results. Simulation does not mutate task state.
+12. Existing populated installations migrate without losing records or changing shared-note visibility. New workflow records remain portable through JSON export and full backup.
+
+---
+
+## 54.7 Usability and Extraction Refinements (2026-10-07)
+
+- Preferences must use the existing page typography, tabs, form grids, and spacing. Separate Alerts, Working Time, Reminders, and Account.
+- Settings must group Workspace Access, Security, Integrations, Data & Recovery, and System. Preserve forms when switching groups; do not display every advanced configuration at once.
+- Add consolidated Work Reports independent of today's dashboard/My Work. Support all-time tasks/projects, kind/status/ownership/relationship/priority filters, due/delivery or created/completed date ranges, and archived inclusion.
+- Report extracts must include every matching record within the export ceiling, not only the visible page. Provide CSV and XLSX, formula-like text neutralization, frozen XLSX headers, and explicit record/size/cell-limit errors. Exclude Vault/private notes.
+- Preserve project lifecycle independently of calculated health. Completing records actual delivery if absent and pauses cadence rules; leave open child tasks/follow-ups unchanged after explicit confirmation. Reopening must not silently resume paused cadence.
+- Notebook editing must support typography, colour/highlight, alignment/spacing, checklists, code, and richer table controls while preserving revisions, stale-save checks, reading mode, and Viewer read-only behavior. Save and DOCX extraction must retain the new content.
+- Wide file/report tables must have bounded, keyboard-focusable horizontal scrolling rather than compressing columns or overflowing the page.
+- Allow persistent, independently collapsible global navigation and local file/notebook hierarchy panels; preserve visible restoration controls and navigation tooltips. Focus editor should reclaim both local rails.
+- Publication includes GPL-3.0-only licensing, original dependency/font notices, and operational/contributor/security documentation. Do not commit generated caches, private databases, server secrets, recovery archives, or scratch acceptance data.
+
+Additional acceptance checks: completion remains visible after reload; open child records remain open and cadence paused; report date/status filters and full exports agree; 24-column tables scroll horizontally; collapsing panels increases the usable editor/table width; formatting survives save/extraction without false dirty states; mobile groups have no page-wide overflow; Viewer editing and completion are rejected.
+
+---
+
+# 55. Research References
 
 The following sources informed the architectural comparison and reuse decisions. Product capabilities should be re-verified against current documentation during implementation because these systems evolve.
 

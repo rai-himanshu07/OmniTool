@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Pencil, Trash2, Plus, CheckSquare, Square, X, Link2, ListTodo, Activity as ActivityIcon, MessageSquare, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { Person, Project } from '@/lib/db/schema';
+import { requestJson, useUnsavedChanges } from '@/lib/client';
 
 interface Props {
   taskId: string;
@@ -25,6 +26,10 @@ export default function TaskDetailView({ taskId }: Props) {
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [dependsOnId, setDependsOnId] = useState('');
   const [focusFeedback, setFocusFeedback] = useState('');
+  const [saveStatus, setSaveStatus] = useState('');
+  const [saving, setSaving] = useState(false);
+  const dirty = editing && !!task && (editForm.title !== task.title || editForm.description !== (task.description || '') || editForm.due_date !== (task.due_date || '') || editForm.owner !== task.owner || editForm.status !== task.status || editForm.priority !== task.priority || editForm.estimated_minutes !== task.estimated_minutes || (editForm.assignee_person_id || '') !== (task.assignee_person_id || ''));
+  useUnsavedChanges(dirty);
 
   const fetchTask = useCallback(async () => {
     try {
@@ -43,6 +48,8 @@ export default function TaskDetailView({ taskId }: Props) {
         status: data.task.status,
         priority: data.task.priority,
         due_date: data.task.due_date || '',
+        estimated_minutes: data.task.estimated_minutes || 30,
+        if_match_updated_at: data.task.updated_at,
       });
     } catch (err) {
       console.error(err);
@@ -59,13 +66,19 @@ export default function TaskDetailView({ taskId }: Props) {
   }, [fetchTask]);
 
   const handleSaveEdit = async () => {
-    await fetch(`/api/tasks/${taskId}`, {
+    setSaving(true);
+    setSaveStatus('Saving...');
+    try {
+    await requestJson(`/api/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editForm),
     });
     setEditing(false);
-    fetchTask();
+    await fetchTask();
+    setSaveStatus('Saved');
+    } catch (error) { setSaveStatus(error instanceof Error ? error.message : 'Save failed. Your edits are still here.'); }
+    finally { setSaving(false); }
   };
 
   const addToFocus = async () => {
@@ -78,69 +91,68 @@ export default function TaskDetailView({ taskId }: Props) {
   };
 
   const handleDeleteTask = async () => {
-    if (!confirm(`Delete "${task.title}"? This cannot be undone.`)) return;
-    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-    router.push('/my-work');
+    if (!confirm(`Move "${task.title}" to Trash?`)) return;
+    try { await requestJson(`/api/tasks/${taskId}`, { method: 'DELETE' }); router.push('/my-work'); }
+    catch (error) { setSaveStatus(String(error)); }
+  };
+
+  const mutate = async (url: string, options: RequestInit) => {
+    if (dirty && !confirm('Discard unsaved task edits before updating linked work?')) return false;
+    try { await requestJson(url, options); await fetchTask(); setSaveStatus('Saved'); return true; }
+    catch (error) { setSaveStatus(String(error)); return false; }
   };
 
   const toggleStatus = async () => {
     const newStatus = task.status === 'done' ? 'open' : 'done';
-    await fetch(`/api/tasks/${taskId}`, {
+    await mutate(`/api/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     });
-    fetchTask();
   };
 
   const addSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
-    await fetch(`/api/tasks/${taskId}/subtasks`, {
+    const saved = await mutate(`/api/tasks/${taskId}/subtasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: newSubtaskTitle.trim() }),
     });
-    setNewSubtaskTitle('');
-    fetchTask();
+    if (saved) setNewSubtaskTitle('');
   };
 
   const toggleSubtask = async (subtask: any) => {
-    await fetch(`/api/tasks/${taskId}/subtasks`, {
+    await mutate(`/api/tasks/${taskId}/subtasks`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subtask_id: subtask.id, status: subtask.status === 'done' ? 'open' : 'done' }),
     });
-    fetchTask();
   };
 
   const deleteSubtask = async (subtaskId: string) => {
-    await fetch(`/api/tasks/${taskId}/subtasks?subtask_id=${subtaskId}`, { method: 'DELETE' });
-    fetchTask();
+    await mutate(`/api/tasks/${taskId}/subtasks?subtask_id=${subtaskId}`, { method: 'DELETE' });
   };
 
   const addDependency = async () => {
     if (!dependsOnId) return;
-    await fetch(`/api/tasks/${taskId}/dependencies`, {
+    const saved = await mutate(`/api/tasks/${taskId}/dependencies`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ depends_on_task_id: dependsOnId }),
     });
-    setDependsOnId('');
-    fetchTask();
+    if (saved) setDependsOnId('');
   };
 
   const removeDependency = async (dependencyId: string) => {
-    await fetch(`/api/tasks/${taskId}/dependencies?dependency_id=${dependencyId}`, { method: 'DELETE' });
-    fetchTask();
+    await mutate(`/api/tasks/${taskId}/dependencies?dependency_id=${dependencyId}`, { method: 'DELETE' });
   };
 
   const resolveFollowup = async (id: string) => {
-    await fetch('/api/followups', {
+    await mutate('/api/followups', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'resolved' }),
     });
-    fetchTask();
   };
 
   if (loading) {
@@ -164,7 +176,7 @@ export default function TaskDetailView({ taskId }: Props) {
   return (
     <div>
       <button
-        onClick={() => router.back()}
+        onClick={() => { if (!dirty || confirm('Leave without saving task edits?')) router.back(); }}
         style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: '1rem', fontSize: '0.85rem', padding: 0 }}
       >
         <ArrowLeft size={14} /> Back
@@ -180,12 +192,13 @@ export default function TaskDetailView({ taskId }: Props) {
             <span style={{ textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>{task.title}</span>
             <span className={`badge badge-${priorityBadge}`}>{task.priority}</span>
             <span className="badge">{task.status}</span>
+            {!!task.archived && <span className="badge">Archived</span>}
           </h1>
           {task.description && !editing && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.35rem', maxWidth: '640px' }}>{task.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button className="btn-secondary" onClick={addToFocus} disabled={task.status === 'done' || task.status === 'cancelled'} title="Add to today's Focus Plan" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Target size={14} /> Focus</button>
-          <button className="btn-secondary" onClick={() => setEditing(!editing)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <button className="btn-secondary" onClick={() => { if (!dirty || confirm('Discard unsaved task edits?')) setEditing(!editing); }} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <Pencil size={14} /> {editing ? 'Cancel' : 'Edit'}
           </button>
           <button className="btn-secondary" onClick={handleDeleteTask} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--danger)' }}>
@@ -195,6 +208,9 @@ export default function TaskDetailView({ taskId }: Props) {
       </div>
 
       {focusFeedback && <p role="status" className="work-muted">{focusFeedback} <Link href="/#focus-plan">View plan</Link></p>}
+      {saveStatus && <p role="status">{saveStatus}</p>}
+      {task.source_event_id && <p>Created from <Link href={`/calendar?focus=${task.source_event_id}`}>{task.source_event?.title || 'Meeting (not in active calendar)'}</Link></p>}
+      {(task.notes || []).length > 0 && <div className="file-toolbar">{task.notes.map((note: any) => <Link key={note.id} href={`/notes?focus=${note.id}`}>{note.title}</Link>)}</div>}
 
       {editing && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
@@ -222,6 +238,8 @@ export default function TaskDetailView({ taskId }: Props) {
               <option value="low">Low</option>
             </select>
             <input type="date" className="input-field" value={editForm.due_date} onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })} />
+                      <label>Estimated minutes<input type="number" className="input-field" min="1" max="10080" value={editForm.estimated_minutes || 30} onChange={(event) => setEditForm({ ...editForm, estimated_minutes: Number(event.target.value) })} /></label>
+                    <button className="btn-secondary" onClick={async () => { try { await requestJson('/api/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: task.archived ? 'unarchive' : 'archive', entity_type: 'task', entity_id: taskId }) }); if (task.archived) fetchTask(); else router.push('/my-work'); } catch (error) { setSaveStatus(String(error)); } }}>{task.archived ? 'Restore' : 'Archive'}</button>
           </div>
           <textarea
             className="input-field"
@@ -231,7 +249,7 @@ export default function TaskDetailView({ taskId }: Props) {
             placeholder="Description"
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn-capture" onClick={handleSaveEdit}>Save changes</button>
+            <button className="btn-capture" disabled={saving} onClick={handleSaveEdit}>{saving ? 'Saving...' : 'Save changes'}</button>
           </div>
         </div>
       )}
@@ -265,7 +283,7 @@ export default function TaskDetailView({ taskId }: Props) {
             {(task.dependencies || []).map((d: any) => (
               <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
                 <span className={`badge ${d.depends_on_status === 'done' ? 'badge-green' : ''}`}>{d.depends_on_status}</span>
-                <span style={{ flex: 1, color: 'var(--text-primary)' }}>{d.depends_on_title}</span>
+                <Link href={`/tasks/${d.depends_on_task_id}`} style={{ flex: 1, color: 'var(--text-primary)' }}>{d.depends_on_title}</Link>
                 <X size={13} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => removeDependency(d.id)} />
               </div>
             ))}
@@ -274,7 +292,7 @@ export default function TaskDetailView({ taskId }: Props) {
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '0.4rem' }}>Blocks</div>
               {(task.dependents || []).map((d: any) => (
-                <div key={d.id} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>{d.task_title}</div>
+                <Link href={`/tasks/${d.task_id}`} key={d.id} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>{d.task_title}</Link>
               ))}
             </div>
           )}

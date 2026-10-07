@@ -15,19 +15,21 @@ export async function GET() {
         `SELECT p.*, c.name as client_name 
          FROM projects p 
          LEFT JOIN clients c ON p.client_id = c.id 
-         WHERE p.workspace_id = ? 
+         WHERE p.workspace_id = ? AND p.archived = 0
          ORDER BY p.created_at DESC`
       )
       .all(wsId) as (Project & { client_name?: string })[];
 
     for (const p of projects) {
-      p.status = getCalculatedProjectHealth(p.id);
-      p.tasks_count = (db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ?`).get(p.id) as { c: number }).c;
+      p.lifecycle_status = p.status;
+      p.health = getCalculatedProjectHealth(p.id);
+      if (!['completed', 'on_hold'].includes(p.status)) p.status = p.health;
+      p.tasks_count = (db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND archived = 0`).get(p.id) as { c: number }).c;
       p.overdue_tasks_count = (
-        db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(p.id, todayStr) as { c: number }
+        db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(p.id, todayStr) as { c: number }
       ).c;
       p.open_followups_count = (
-        db.prepare(`SELECT COUNT(*) as c FROM followups WHERE project_id = ? AND status = 'waiting'`).get(p.id) as { c: number }
+        db.prepare(`SELECT COUNT(*) as c FROM followups WHERE project_id = ? AND archived = 0 AND status = 'waiting'`).get(p.id) as { c: number }
       ).c;
     }
 

@@ -35,6 +35,9 @@ export interface Client {
 }
 
 export interface Project {
+  archived?: number;
+  lifecycle_status?: string;
+  health?: 'green' | 'amber' | 'red';
   id: string;
   workspace_id: string;
   client_id?: string;
@@ -59,6 +62,9 @@ export interface Project {
 }
 
 export interface Task {
+  archived?: number;
+  estimated_minutes?: number;
+  source_event_id?: string;
   id: string;
   workspace_id: string;
   project_id?: string;
@@ -101,6 +107,8 @@ export interface TaskDependency {
 }
 
 export interface Followup {
+  archived?: number;
+  source_event_id?: string;
   id: string;
   workspace_id: string;
   project_id?: string;
@@ -198,6 +206,9 @@ export interface QcChecklist {
 }
 
 export interface Note {
+  archived?: number;
+  visibility?: 'private' | 'shared';
+  owner_user_id?: string;
   id: string;
   workspace_id: string;
   project_id?: string;
@@ -211,6 +222,8 @@ export interface Note {
 }
 
 export interface Notebook {
+  visibility?: 'private' | 'shared';
+  owner_user_id?: string;
   id: string;
   workspace_id: string;
   name: string;
@@ -266,6 +279,7 @@ export interface InboxItem {
 }
 
 export interface CalendarEvent {
+  archived?: number;
   id: string;
   workspace_id: string;
   source_id?: string;
@@ -313,6 +327,7 @@ export interface ActivityLog {
 }
 
 export interface Reminder {
+  user_id?: string;
   id: string;
   workspace_id: string;
   entity_type: string;
@@ -324,6 +339,7 @@ export interface Reminder {
 }
 
 export interface Notification {
+  user_id?: string;
   id: string;
   workspace_id: string;
   type: string;
@@ -466,6 +482,7 @@ CREATE TABLE IF NOT EXISTS projects (
   start_date TEXT,
   planned_delivery_date TEXT,
   actual_delivery_date TEXT,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -496,6 +513,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date TEXT,
   planned_completion TEXT,
   actual_completion TEXT,
+  archived INTEGER NOT NULL DEFAULT 0,
+  estimated_minutes INTEGER NOT NULL DEFAULT 30,
+  source_event_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -541,6 +561,8 @@ CREATE TABLE IF NOT EXISTS followups (
   resolved_at TEXT,
   notes TEXT,
   tags_json TEXT NOT NULL DEFAULT '[]',
+  archived INTEGER NOT NULL DEFAULT 0,
+  source_event_id TEXT,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
@@ -659,6 +681,9 @@ CREATE TABLE IF NOT EXISTS notes (
   client_id TEXT,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
+  owner_user_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -669,6 +694,8 @@ CREATE TABLE IF NOT EXISTS notebooks (
   workspace_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  owner_user_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -742,6 +769,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   location TEXT,
   is_all_day INTEGER NOT NULL DEFAULT 0,
   external_link TEXT,
+  archived INTEGER NOT NULL DEFAULT 0,
   related_project_id TEXT,
   created_at TEXT NOT NULL
 );
@@ -776,6 +804,7 @@ CREATE TABLE IF NOT EXISTS reminders (
   entity_id TEXT NOT NULL,
   remind_at TEXT NOT NULL,
   message TEXT,
+  user_id TEXT,
   is_fired INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -788,6 +817,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   type TEXT NOT NULL, -- 'overdue', 'due_soon', 'followup_aging', 'recurring_due', 'reminder'
   title TEXT NOT NULL,
   message TEXT NOT NULL,
+  user_id TEXT,
   entity_type TEXT,
   entity_id TEXT,
   is_read INTEGER NOT NULL DEFAULT 0,
@@ -844,6 +874,22 @@ CREATE TABLE IF NOT EXISTS calendar_sources (
 );
 
 -- Indexes for performance
+CREATE TABLE IF NOT EXISTS file_trackers (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'private', name TEXT NOT NULL, file_name TEXT NOT NULL, payload_json TEXT NOT NULL,
+  mapping_json TEXT NOT NULL DEFAULT '{}', imported_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS tracker_row_links (tracker_id TEXT NOT NULL REFERENCES file_trackers(id) ON DELETE CASCADE,
+  sheet_name TEXT NOT NULL, row_key TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+  PRIMARY KEY(tracker_id, sheet_name, row_key, entity_type));
+CREATE TABLE IF NOT EXISTS trash_items (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, user_id TEXT NOT NULL, entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL, title TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS work_following (workspace_id TEXT NOT NULL, user_id TEXT NOT NULL, entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL, PRIMARY KEY(workspace_id, user_id, entity_type, entity_id));
+CREATE TABLE IF NOT EXISTS saved_views (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, user_id TEXT NOT NULL,
+  name TEXT NOT NULL, filters_json TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS user_preferences (workspace_id TEXT NOT NULL, user_id TEXT NOT NULL, value_json TEXT NOT NULL,
+  PRIMARY KEY(workspace_id, user_id));
+CREATE TABLE IF NOT EXISTS notification_receipts (notification_id TEXT NOT NULL, user_id TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0, snoozed_until TEXT, PRIMARY KEY(notification_id, user_id));
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);

@@ -28,11 +28,12 @@ export async function POST(request: Request) {
     const id = uuidv4();
     const now = new Date().toISOString();
     const iterations = kdf_iterations || 600000;
+    if (db.prepare('SELECT id FROM secure_vault_meta WHERE workspace_id = ?').get(wsId)) return NextResponse.json({ error: 'Vault already initialized. Unlock to change its password, or explicitly reset it.' }, { status: 409 });
+    if (!Number.isInteger(iterations) || iterations < 600000 || iterations > 2000000) return NextResponse.json({ error: 'Invalid key derivation parameters' }, { status: 400 });
 
     db.prepare(
       `INSERT INTO secure_vault_meta (id, workspace_id, is_initialized, key_salt, test_ciphertext, test_iv, kdf_iterations, updated_at) 
-       VALUES (?, ?, 1, ?, ?, ?, ?, ?) 
-       ON CONFLICT(workspace_id) DO UPDATE SET key_salt=excluded.key_salt, test_ciphertext=excluded.test_ciphertext, test_iv=excluded.test_iv, kdf_iterations=excluded.kdf_iterations, updated_at=excluded.updated_at`
+      VALUES (?, ?, 1, ?, ?, ?, ?, ?)`
     ).run(id, wsId, key_salt, test_ciphertext, test_iv, iterations, now);
 
     const meta = db.prepare(`SELECT * FROM secure_vault_meta WHERE workspace_id = ?`).get(wsId);

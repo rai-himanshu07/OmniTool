@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDb, getDefaultWorkspaceId } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { getAccess, apiError } from '@/lib/services/workspaceAccess';
+import { moveToTrash } from '@/lib/services/dataLifecycle';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const db = getDb();
     const wsId = getDefaultWorkspaceId();
+    const view = new URL(request.url).searchParams.get('view');
 
     const events = db
       .prepare(
@@ -13,10 +16,10 @@ export async function GET() {
          FROM calendar_events ce 
          LEFT JOIN projects p ON ce.related_project_id = p.id 
          LEFT JOIN calendar_sources cs ON ce.calendar_source_id = cs.id
-         WHERE ce.workspace_id = ? 
+         WHERE ce.workspace_id = ? AND ce.archived = 0 ${view === 'all' ? '' : 'AND ce.end_time >= ?'}
          ORDER BY ce.start_time ASC`
       )
-      .all(wsId);
+      .all(...(view === 'all' ? [wsId] : [wsId, new Date().toISOString()]));
 
     const sources = db.prepare(`SELECT provider, last_synced_at, refresh_token_enc IS NOT NULL AS connected
       FROM calendar_sources WHERE workspace_id = ?`).all(wsId);
@@ -46,7 +49,7 @@ export async function POST(request: Request) {
     db.prepare(
       `INSERT INTO calendar_events (id, workspace_id, title, start_time, end_time, location, is_all_day, related_project_id, created_at) 
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
-    ).run(id, wsId, title, start_time, end_time, location || null, related_project_id || null, now);
+    ).run(id, wsId, title, new Date(start_time).toISOString(), new Date(end_time).toISOString(), location || null, related_project_id || null, now);
 
     const event = db.prepare(`SELECT * FROM calendar_events WHERE id = ?`).get(id);
     return NextResponse.json({ event });
@@ -65,7 +68,7 @@ export async function PUT(request: Request) {
     const result = db.prepare(
       `UPDATE calendar_events SET title = ?, start_time = ?, end_time = ?, location = ?, related_project_id = ?
        WHERE id = ? AND workspace_id = ? AND source_id IS NULL AND calendar_source_id IS NULL`
-    ).run(title.trim(), start_time, end_time, location || null, related_project_id || null, id, getDefaultWorkspaceId());
+    ).run(title.trim(), new Date(start_time).toISOString(), new Date(end_time).toISOString(), location || null, related_project_id || null, id, getDefaultWorkspaceId());
     if (!result.changes) return NextResponse.json({ error: 'Local event not found' }, { status: 404 });
     return NextResponse.json({ event: db.prepare('SELECT * FROM calendar_events WHERE id = ?').get(id) });
   } catch (error: any) {
@@ -77,12 +80,9 @@ export async function DELETE(request: Request) {
   try {
     const id = new URL(request.url).searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
-    const result = getDb().prepare(
-      `DELETE FROM calendar_events WHERE id = ? AND workspace_id = ? AND source_id IS NULL AND calendar_source_id IS NULL`
-    ).run(id, getDefaultWorkspaceId());
-    if (!result.changes) return NextResponse.json({ error: 'Local event not found' }, { status: 404 });
-    return NextResponse.json({ success: true });
+    const access = await getAccess(request, ['admin', 'member']);
+    return NextResponse.json(moveToTrash(getDb(), 'meeting', id, access.workspaceId, access.user.id));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

@@ -4,10 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Pencil, Trash2, Plus, CheckSquare, Square, Calendar as CalendarIcon,
+  ArrowLeft, Pencil, Trash2, Plus, CheckSquare, Square, Calendar as CalendarIcon, CheckCircle2, RotateCcw,
   FileText, ClipboardCheck, Activity as ActivityIcon, ListTodo, MessageSquare, RefreshCw, UsersRound, X
 } from 'lucide-react';
 import { Client } from '@/lib/db/schema';
+import { requestJson, useUnsavedChanges } from '@/lib/client';
 
 interface Props {
   projectId: string;
@@ -47,6 +48,9 @@ export default function ProjectDetailView({ projectId }: Props) {
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
+  const [saveStatus, setSaveStatus] = useState('');
+  const dirty = editing && !!project && Object.entries(editForm).some(([key, value]) => key !== 'if_match_updated_at' && (value || '') !== (project[key] || ''));
+  useUnsavedChanges(dirty);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -80,6 +84,7 @@ export default function ProjectDetailView({ projectId }: Props) {
         start_date: data.project.start_date || '',
         planned_delivery_date: data.project.planned_delivery_date || '',
         actual_delivery_date: data.project.actual_delivery_date || '',
+        if_match_updated_at: data.project.updated_at,
       });
     } catch (err) {
       console.error(err);
@@ -97,7 +102,8 @@ export default function ProjectDetailView({ projectId }: Props) {
   }, [fetchDetail]);
 
   const handleSaveEdit = async () => {
-    await fetch(`/api/projects/${projectId}`, {
+    try {
+    await requestJson(`/api/projects/${projectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -108,12 +114,27 @@ export default function ProjectDetailView({ projectId }: Props) {
     });
     setEditing(false);
     fetchDetail();
+    setSaveStatus('Saved');
+    } catch (error) { setSaveStatus(String(error)); }
   };
 
   const handleDeleteProject = async () => {
-    if (!confirm(`Delete "${project.name}"? Tasks and follow-ups will be unlinked, not deleted.`)) return;
-    await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
-    router.push('/projects');
+    if (!confirm(`Move "${project.name}" to Trash? Linked work will be preserved for restoration.`)) return;
+    try { await requestJson(`/api/projects/${projectId}`, { method: 'DELETE' }); router.push('/projects'); }
+    catch (error) { setSaveStatus(String(error)); }
+  };
+
+  const setProjectCompletion = async () => {
+    const completed = project.lifecycle_status === 'completed';
+    if (!completed) {
+      const openTasks = tasks.filter((task) => !['done', 'cancelled'].includes(task.status)).length;
+      const openFollowups = followups.filter((followup) => !['resolved', 'cancelled'].includes(followup.status)).length;
+      if (!confirm(`Complete this project? ${openTasks} open tasks and ${openFollowups} follow-ups will remain unchanged. Cadence rules will pause.`)) return;
+    }
+    try {
+      await requestJson(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: completed ? 'active' : 'completed', if_match_updated_at: project.updated_at }) });
+      setSaveStatus(completed ? 'Project reopened. Resume cadence rules explicitly if needed.' : 'Project completed.'); await fetchDetail();
+    } catch (error) { setSaveStatus(String(error)); }
   };
 
   const toggleTaskStatus = async (task: any) => {
@@ -267,7 +288,7 @@ export default function ProjectDetailView({ projectId }: Props) {
   return (
     <div>
       <button
-        onClick={() => router.push('/projects')}
+        onClick={() => { if (!dirty || confirm('Leave without saving project edits?')) router.push('/projects'); }}
         style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', marginBottom: '1rem', fontSize: '0.85rem', padding: 0 }}
       >
         <ArrowLeft size={14} /> Back to Projects
@@ -286,7 +307,9 @@ export default function ProjectDetailView({ projectId }: Props) {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <Link href={`/cadence?project_id=${projectId}`} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', textDecoration: 'none' }}><RefreshCw size={14} /> Cadence</Link>
-          <button className="btn-secondary" onClick={() => setEditing(!editing)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <button className="btn-secondary" disabled={dirty} onClick={setProjectCompletion}>{project.lifecycle_status === 'completed' ? <RotateCcw size={15} /> : <CheckCircle2 size={15} />} {project.lifecycle_status === 'completed' ? 'Reopen project' : 'Complete project'}</button>
+          <button className="btn-secondary" onClick={async () => { try { await requestJson('/api/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'archive', entity_type: 'project', entity_id: projectId }) }); router.push('/projects'); } catch (error) { setSaveStatus(String(error)); } }}>Archive</button>
+          <button className="btn-secondary" onClick={() => { if (!dirty || confirm('Discard unsaved project edits?')) setEditing(!editing); }} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <Pencil size={14} /> {editing ? 'Cancel' : 'Edit'}
           </button>
           <button className="btn-secondary" onClick={handleDeleteProject} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--danger)' }}>
@@ -345,6 +368,7 @@ export default function ProjectDetailView({ projectId }: Props) {
       )}
 
       <div className="tabs">
+        {saveStatus && <p role="status">{saveStatus}</p>}
         {TABS.map((t) => (
           <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
         ))}

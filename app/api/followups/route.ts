@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb, getDefaultWorkspaceId } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { Followup } from '@/lib/db/schema';
+import { getAccess } from '@/lib/services/workspaceAccess';
 
 export async function GET(request: Request) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
          FROM followups f 
          LEFT JOIN projects p ON f.project_id = p.id 
          LEFT JOIN tasks t ON f.task_id = t.id 
-         WHERE f.workspace_id = ? AND (? IS NULL OR f.status = ?)
+         WHERE f.workspace_id = ? AND f.archived = 0 AND (? IS NULL OR f.status = ?)
          ORDER BY CASE WHEN f.status = 'waiting' THEN 1 WHEN f.status = 'escalated' THEN 2 ELSE 3 END, f.created_at ASC`
       )
       .all(wsId, status, status) as (Followup & { project_name?: string; task_title?: string })[];
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const access = await getAccess(request, ['admin', 'member']);
     const body = await request.json();
     const { title, waiting_on_person, waiting_on_person_id, category, expected_date, priority, project_id, task_id, notes, tags } = body;
 
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
       project_id || null,
       task_id || null,
       title,
-      'Himanshu',
+      access.user.name,
       person?.name || waiting_on_person,
       waiting_on_person_id || null,
       category || 'waiting_response',

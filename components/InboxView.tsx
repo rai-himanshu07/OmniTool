@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Inbox as InboxIcon, ArrowRight, Sparkles } from 'lucide-react';
 import { InboxItem, Project } from '@/lib/db/schema';
+import { useUnsavedChanges } from '@/lib/client';
 
 export default function InboxView() {
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -18,6 +19,8 @@ export default function InboxView() {
   const [suggestion, setSuggestion] = useState<{ kind: 'task' | 'followup' | 'note'; title: string; waiting_on_person: string; due_date?: string | null; rationale: string } | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState('');
+  const openedFocus = useRef('');
+  useUnsavedChanges(!!selectedItem);
 
   const fetchData = async () => {
     setLoading(true);
@@ -43,6 +46,7 @@ export default function InboxView() {
     setTargetTitle(item.content);
     setConvertType('task'); setTargetProjectId(''); setTargetPerson(''); setTargetDate(''); setSuggestion(null); setError('');
   };
+  useEffect(() => { const id = new URLSearchParams(window.location.search).get('focus'); const target = items.find((item) => item.id === id); if (target && openedFocus.current !== id) { openedFocus.current = id || ''; handleStartConvert(target); } }, [items]);
 
   const suggest = async () => {
     if (!selectedItem) return;

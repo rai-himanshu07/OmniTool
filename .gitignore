@@ -13,6 +13,7 @@ omnitool.db-journal
 
 # Server-side secret used to encrypt calendar tokens at rest — never commit
 .omnitool_secret
+.omnitool-recovery/
 
 # Environment overrides (may contain Microsoft Graph client secret, etc.)
 .env

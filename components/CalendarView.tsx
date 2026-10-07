@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar as CalendarIcon, MapPin, ExternalLink, Plus, RefreshCw, Link2Off, Pencil, Trash2 } from 'lucide-react';
 import { CalendarEvent, Project } from '@/lib/db/schema';
+import MeetingOutcomeForm from '@/components/MeetingOutcomeForm';
+import { requestJson, useUnsavedChanges } from '@/lib/client';
 
 const STALE_SYNC_MS = 15 * 60 * 1000; // auto-sync if last synced more than 15 minutes ago
 const syncIsStale = (lastSyncedAt: string | null) => !lastSyncedAt || Date.now() - new Date(lastSyncedAt).getTime() > STALE_SYNC_MS;
@@ -31,10 +33,28 @@ export default function CalendarView() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [googleSyncedAt, setGoogleSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [outcomeEvent, setOutcomeEvent] = useState<CalendarEvent | null>(null);
+  useUnsavedChanges(showForm && (!!title || !!startTime || !!endTime));
   const autoSyncTriggered = useRef(new Set<string>());
+  const [view, setView] = useState('upcoming');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer); }, []);
+  const visibleEvents = events.filter((event) => view === 'upcoming' ? Date.parse(event.end_time) >= now
+    : view === 'past' ? Date.parse(event.end_time) < now
+    : (!fromDate || Date.parse(event.end_time) >= new Date(`${fromDate}T00:00:00`).getTime()) && (!toDate || Date.parse(event.start_time) <= new Date(`${toDate}T23:59:59`).getTime()));
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('focus');
+    const event = events.find((item) => item.id === id);
+    if (!event) return;
+    setView(Date.parse(event.end_time) < Date.now() ? 'past' : 'upcoming');
+    const frame = requestAnimationFrame(() => document.getElementById(`meeting-${id}`)?.scrollIntoView({ block: 'center' }));
+    return () => cancelAnimationFrame(frame);
+  }, [events]);
 
   const fetchEvents = () => {
-    fetch('/api/calendar')
+    fetch('/api/calendar?view=all')
       .then((res) => res.json())
       .then((d) => {
         setEvents(d.events || []);
@@ -127,10 +147,9 @@ export default function CalendarView() {
   };
 
   const deleteEvent = async (id: string) => {
-    if (!confirm('Delete this local event?')) return;
-    const response = await fetch(`/api/calendar?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (response.ok) fetchEvents();
-    else setError('Could not delete event');
+    if (!confirm('Move this local event to Trash?')) return;
+    try { await requestJson(`/api/calendar?id=${encodeURIComponent(id)}`, { method: 'DELETE' }); fetchEvents(); }
+    catch (cause) { setError(String(cause)); }
   };
 
   const handleSyncNow = async () => {
@@ -190,6 +209,10 @@ export default function CalendarView() {
         </form>
       )}
       {!showForm && error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {outcomeEvent && <MeetingOutcomeForm event={outcomeEvent} onClose={() => setOutcomeEvent(null)} />}
+      {(calConnected && syncIsStale(lastSyncedAt) || googleConnected && syncIsStale(googleSyncedAt)) && <p role="status" className="work-error">Calendar cache is stale. Check connection or sync again.</p>}
+      <div className="tabs">{['upcoming', 'past', 'range'].map((mode) => <button key={mode} className={`tab ${view === mode ? 'active' : ''}`} onClick={() => setView(mode)}>{mode === 'range' ? 'Date range' : mode === 'past' ? 'Past' : 'Upcoming'}</button>)}</div>
+      {view === 'range' && <div className="form-row"><label>From<input className="form-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Through<input className="form-input" type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} /></label></div>}
 
       {loading ? (
         <div style={{ color: 'var(--text-muted)' }}>Loading agenda events...</div>
@@ -198,7 +221,7 @@ export default function CalendarView() {
           <div className="card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <CalendarIcon size={20} color="var(--emerald)" />
-              <span>Upcoming Agenda</span>
+              <span>{view === 'past' ? 'Past meetings' : view === 'range' ? 'Agenda' : 'Upcoming Agenda'}</span>
             </div>
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               {calConnected && <span className="badge badge-green">M365 {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'Connected'}</span>}
@@ -208,12 +231,12 @@ export default function CalendarView() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {events.map((evt) => {
+            {visibleEvents.map((evt) => {
               const startDate = new Date(evt.start_time);
               const endDate = new Date(evt.end_time);
 
               return (
-                <div key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1rem', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)' }}>
+                <div id={`meeting-${evt.id}`} key={evt.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '1.25rem', padding: '1rem', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ textAlign: 'center', paddingRight: '1rem', borderRight: '1px solid var(--border-subtle)', minWidth: '80px' }}>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                       {startDate.toLocaleDateString('en-US', { weekday: 'short', ...(evt.is_all_day ? { timeZone: 'UTC' } : {}) })}
@@ -225,6 +248,7 @@ export default function CalendarView() {
 
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{evt.title} {evt.provider && <span className="badge">{evt.provider === 'google' ? 'Google' : 'M365'}</span>}</div>
+                    {events.some((other) => other.id !== evt.id && !other.is_all_day && !evt.is_all_day && Date.parse(other.start_time) < Date.parse(evt.end_time) && Date.parse(other.end_time) > Date.parse(evt.start_time)) && <span className="badge badge-amber">Overlap</span>}
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
                       {evt.is_all_day ? 'All day' : `${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                     </div>
@@ -248,10 +272,11 @@ export default function CalendarView() {
                       <button type="button" className="btn-secondary" onClick={() => deleteEvent(evt.id)} aria-label={`Delete ${evt.title}`}><Trash2 size={14} /></button>
                     </div>
                   )}
+                  {role && role !== 'viewer' && <button className="btn-secondary" onClick={() => setOutcomeEvent(evt)}><Plus size={14} /> Outcome</button>}
                 </div>
               );
             })}
-            {events.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No upcoming events.</div>}
+            {visibleEvents.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No events in this view.</div>}
           </div>
         </div>
       )}

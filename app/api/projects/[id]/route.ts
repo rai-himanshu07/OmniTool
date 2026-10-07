@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, getDefaultWorkspaceId } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { getCalculatedProjectHealth } from '@/lib/services/attentionEngine';
+import { getAccess, AccessError, apiError } from '@/lib/services/workspaceAccess';
+import { moveToTrash } from '@/lib/services/dataLifecycle';
+import { formatInTimeZone } from 'date-fns-tz';
+import { preferences } from '@/lib/services/userPreferences';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
+    const access = await getAccess(request);
     const db = getDb();
     const project = db
       .prepare(`SELECT p.*, c.name as client_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?`)
@@ -13,7 +18,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    project.status = getCalculatedProjectHealth(project.id);
+    project.lifecycle_status = project.status;
+    project.health = getCalculatedProjectHealth(project.id);
+    if (!['completed', 'on_hold'].includes(project.status)) project.status = project.health;
 
     const tasks = db
       .prepare(
@@ -44,11 +51,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const notes = db
       .prepare(
         `SELECT DISTINCT n.* FROM notes n
-         WHERE n.project_id = ?
-         OR n.id IN (SELECT note_id FROM note_links WHERE linked_entity_type = 'project' AND linked_entity_id = ?)
+         WHERE (n.project_id = ?
+         OR n.id IN (SELECT note_id FROM note_links WHERE linked_entity_type = 'project' AND linked_entity_id = ?))
+         AND n.archived = 0 AND (n.visibility = 'shared' OR n.owner_user_id = ?)
          ORDER BY n.updated_at DESC`
       )
-      .all(params.id, params.id);
+      .all(params.id, params.id, access.user.id);
 
     const events = db.prepare(`SELECT * FROM calendar_events WHERE related_project_id = ? ORDER BY start_time ASC`).all(params.id);
 
@@ -65,6 +73,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
+    const access = await getAccess(request, ['admin', 'member']);
     const db = getDb();
     const wsId = getDefaultWorkspaceId();
     const body = await request.json();
@@ -73,12 +82,22 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 
     const existing = db.prepare(`SELECT * FROM projects WHERE id = ?`).get(params.id);
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (body.if_match_updated_at && body.if_match_updated_at !== (existing as { updated_at: string }).updated_at) throw new AccessError('Project changed in another tab. Reopen it before saving.', 409);
     const person = owner_person_id ? db.prepare('SELECT name FROM people WHERE id = ? AND workspace_id = ? AND (active = 1 OR id = ?)').get(owner_person_id, wsId, (existing as { owner_person_id?: string }).owner_person_id) as { name: string } | undefined : undefined;
     if (owner_person_id && !person) return NextResponse.json({ error: 'Person not found' }, { status: 404 });
 
     const updates: string[] = ['updated_at = ?'];
     const vals: any[] = [now];
     const changes: string[] = [];
+    if (body.status !== undefined) {
+      if (!['active', 'completed', 'on_hold'].includes(body.status)) throw new AccessError('Invalid project lifecycle');
+      updates.push('status = ?'); vals.push(body.status === 'active' ? 'green' : body.status);
+      changes.push(body.status === 'completed' ? 'project completed' : body.status === 'active' ? 'project reopened' : 'project placed on hold');
+      if (body.status === 'completed' && actual_delivery_date === undefined) {
+        updates.push('actual_delivery_date = COALESCE(actual_delivery_date, ?)');
+        vals.push(formatInTimeZone(new Date(), preferences(wsId, access.user.id).timezone, 'yyyy-MM-dd'));
+      }
+    }
 
     if (name !== undefined) { updates.push('name = ?'); vals.push(name); }
     if (code !== undefined) { updates.push('code = ?'); vals.push(code || null); }
@@ -95,6 +114,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     vals.push(params.id);
     db.transaction(() => {
       db.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`).run(...vals);
+      if (body.status === 'completed') db.prepare('UPDATE recurring_obligations SET active = 0 WHERE project_id = ? AND workspace_id = ?').run(params.id, wsId);
       if (owner_person_id && owner_person_id !== (existing as { owner_person_id?: string }).owner_person_id) {
         if ((existing as { owner_person_id?: string }).owner_person_id) db.prepare(`UPDATE project_people SET role = 'member' WHERE project_id = ? AND person_id = ?`).run(params.id, (existing as { owner_person_id?: string }).owner_person_id);
         db.prepare(`INSERT INTO project_people (project_id, person_id, role) VALUES (?, ?, 'lead')
@@ -109,7 +129,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     const project = db.prepare(`SELECT * FROM projects WHERE id = ?`).get(params.id);
     return NextResponse.json({ project });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
@@ -118,11 +138,12 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
   try {
     const db = getDb();
     const wsId = getDefaultWorkspaceId();
-    db.prepare(`DELETE FROM projects WHERE id = ?`).run(params.id);
+    const access = await getAccess(request, ['admin', 'member']);
+    const result = moveToTrash(db, 'project', params.id, wsId, access.user.id);
     db.prepare(
       `INSERT INTO activity_log (id, workspace_id, entity_type, entity_id, action, details, created_at) VALUES (?, ?, 'project', ?, 'project_deleted', 'Project deleted', ?)`
     ).run(uuidv4(), wsId, params.id, new Date().toISOString());
-    return NextResponse.json({ success: true });
+    return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

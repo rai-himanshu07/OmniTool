@@ -33,11 +33,12 @@ function createNotification(
   message: string,
   entityType: string | null,
   entityId: string | null,
-  now: string
+  now: string,
+  userId: string | null = null
 ) {
   db.prepare(
-    `INSERT INTO notifications (id, workspace_id, type, title, message, entity_type, entity_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
-  ).run(uuidv4(), wsId, type, title, message, entityType, entityId, now);
+    `INSERT INTO notifications (id, workspace_id, type, title, message, entity_type, entity_id, is_read, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+  ).run(uuidv4(), wsId, type, title, message, entityType, entityId, now, userId);
 }
 
 export interface AttentionSweepResult {
@@ -74,7 +75,7 @@ export function runAttentionSweep(): AttentionSweepResult {
     .all(wsId, nowIso) as Reminder[];
 
   for (const r of dueReminders) {
-    createNotification(db, wsId, 'reminder', 'Reminder', r.message || 'You have a reminder due', r.entity_type, r.entity_id, nowIso);
+    createNotification(db, wsId, 'reminder', 'Reminder', r.message || 'You have a reminder due', r.entity_type, r.entity_id, nowIso, (r as Reminder & { user_id?: string }).user_id || null);
     db.prepare(`UPDATE reminders SET is_fired = 1 WHERE id = ?`).run(r.id);
     notificationsCreated++;
   }
@@ -82,7 +83,7 @@ export function runAttentionSweep(): AttentionSweepResult {
   // 2. Overdue tasks (once per task, not every morning)
   const overdueTasks = db
     .prepare(
-      `SELECT id, title FROM tasks WHERE workspace_id = ? AND status NOT IN ('done', 'cancelled') AND due_date IS NOT NULL AND due_date < ?`
+      `SELECT id, title FROM tasks WHERE workspace_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date IS NOT NULL AND due_date < ?`
     )
     .all(wsId, todayStr) as { id: string; title: string }[];
   for (const t of overdueTasks) {
@@ -94,7 +95,7 @@ export function runAttentionSweep(): AttentionSweepResult {
 
   // 3. Due-today tasks
   const dueTodayTasks = db
-    .prepare(`SELECT id, title FROM tasks WHERE workspace_id = ? AND status NOT IN ('done', 'cancelled') AND due_date = ?`)
+    .prepare(`SELECT id, title FROM tasks WHERE workspace_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date = ?`)
     .all(wsId, todayStr) as { id: string; title: string }[];
   for (const t of dueTodayTasks) {
     if (!hasNotificationToday(db, wsId, 'due_soon', 'task', t.id, todayStr)) {
@@ -106,24 +107,12 @@ export function runAttentionSweep(): AttentionSweepResult {
   // 4. Stalled follow-ups (once per waiting episode)
   const stalled = db
     .prepare(
-      `SELECT id, title, waiting_on_person, last_activity_at FROM followups WHERE workspace_id = ? AND status = 'waiting' AND julianday(?) - julianday(last_activity_at) >= 2`
+      `SELECT id, title, waiting_on_person, last_activity_at FROM followups WHERE workspace_id = ? AND archived = 0 AND status = 'waiting' AND julianday(?) - julianday(last_activity_at) >= 2`
     )
     .all(wsId, nowIso) as { id: string; title: string; waiting_on_person: string; last_activity_at: string }[];
   for (const f of stalled) {
     if (!hasNotificationSince(db, wsId, 'followup_aging', 'followup', f.id, f.last_activity_at)) {
       createNotification(db, wsId, 'followup_aging', 'Follow-up waiting', `${f.waiting_on_person} — ${f.title}`, 'followup', f.id, nowIso);
-      notificationsCreated++;
-    }
-  }
-
-  // 5. Meetings starting within 30 minutes (one-time heads-up, not daily)
-  const soonIso = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  const upcomingMeetings = db
-    .prepare(`SELECT id, title FROM calendar_events WHERE workspace_id = ? AND start_time > ? AND start_time <= ?`)
-    .all(wsId, nowIso, soonIso) as { id: string; title: string }[];
-  for (const m of upcomingMeetings) {
-    if (!hasNotificationEver(db, wsId, 'meeting_soon', 'meeting', m.id)) {
-      createNotification(db, wsId, 'meeting_soon', 'Meeting starting soon', `${m.title} starts soon`, 'meeting', m.id, nowIso);
       notificationsCreated++;
     }
   }

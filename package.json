@@ -1,6 +1,7 @@
 {
   "name": "omnitool",
   "version": "0.1.0",
+  "license": "GPL-3.0-only",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
@@ -8,41 +9,59 @@
     "start": "next start",
     "lint": "eslint app components lib",
     "lock:reset": "node scripts/reset-screen-lock.mjs",
+    "account:reset": "node scripts/reset-account-password.mjs",
     "backup": "node scripts/workspace-backup.mjs backup",
     "backup:verify": "node scripts/workspace-backup.mjs verify",
     "backup:restore": "node scripts/workspace-backup.mjs restore"
   },
   "dependencies": {
+    "@ctrl/tinycolor": "^4.2.1",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/ibm-plex-serif": "^5.3.0",
+    "@inquirer/password": "^4.0.23",
+    "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-table": "^3.31.3",
     "@tiptap/extension-table-cell": "^3.31.3",
     "@tiptap/extension-table-header": "^3.31.3",
     "@tiptap/extension-table-row": "^3.31.3",
+    "@tiptap/extension-task-item": "^3.31.3",
+    "@tiptap/extension-task-list": "^3.31.3",
     "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/extension-text-style": "^3.31.3",
     "@tiptap/extension-underline": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
+    "archiver": "^8.0.0",
     "better-auth": "^1.7.5",
     "better-sqlite3": "^11.3.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.2.0",
     "docx": "^9.7.2",
+    "exceljs": "^4.4.0",
     "google-auth-library": "^10.5.0",
     "googleapis": "^175.0.0",
     "lucide-react": "^0.446.0",
     "next": "^16.3.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "uuid": "^10.0.0",
+    "uuid": "^11.1.1",
+    "yauzl": "^3.4.0",
     "zod": "^4.6.5"
   },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20.16.5",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",
     "@types/uuid": "^10.0.0",
+    "@types/yauzl": "^3.4.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
     "typescript": "^5.6.2"

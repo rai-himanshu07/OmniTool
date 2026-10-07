@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
 import { LockKeyhole } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { requestJson } from '@/lib/client';
 
 const ScreenLockContext = createContext({ enabled: false, lock: () => {} });
 
@@ -19,6 +20,8 @@ export default function ScreenLockProvider({ children }: { children: ReactNode }
   const [locked, setLocked] = useState(true);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const [accountPassword, setAccountPassword] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channel = useRef<BroadcastChannel | null>(null);
   const userId = useRef('');
@@ -101,7 +104,8 @@ export default function ScreenLockProvider({ children }: { children: ReactNode }
     {!checking && enabled && <><input aria-label="Four-digit PIN" type="password" inputMode="numeric" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} autoFocus /><button type="submit" className="btn-capture" disabled={pin.length !== 4}>Unlock</button></>}
     {!checking && !enabled && <button type="button" className="btn-secondary" onClick={() => loadConfig()}>Retry</button>}
     {error && <p role="alert" className="work-error">{error}</p>}
-    {!checking && enabled && <p className="screen-lock-recovery">Forgot PIN? Run <code>npm run lock:reset -- your@email</code> on the host.</p>}
+    {!checking && enabled && <button type="button" className="btn-secondary" onClick={() => setRecovering(!recovering)}>Forgot PIN?</button>}
+    {recovering && <><input aria-label="Account password for PIN recovery" type="password" autoComplete="current-password" value={accountPassword} onChange={(event) => setAccountPassword(event.target.value)} /><button type="button" className="btn-secondary" disabled={!accountPassword} onClick={async () => { try { await requestJson('/api/screen-lock/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: accountPassword }) }); setAccountPassword(''); setRecovering(false); await loadConfig(true); window.dispatchEvent(new Event('omnitool:lock-config-changed')); } catch (cause) { setError(String(cause)); } }}>Reset PIN with account password</button></>}
   </form></div>;
 
   return <ScreenLockContext.Provider value={{ enabled, lock }}>{children}</ScreenLockContext.Provider>;

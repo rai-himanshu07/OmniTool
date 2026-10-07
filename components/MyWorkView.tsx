@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
+import WorkControls, { WorkFilters } from '@/components/WorkControls';
+import { requestJson } from '@/lib/client';
 
 type Task = {
   id: string;
@@ -71,17 +73,21 @@ type MyWorkData = {
 
 export default function MyWorkView() {
   const [data, setData] = useState<MyWorkData | null>(null);
-  const [period, setPeriod] = useState<'today' | 'this_week' | 'overdue' | 'all'>('today');
+  const [period, setPeriod] = useState('today');
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<WorkFilters>({ scope: 'mine', project_id: '', client_id: '', person_id: '', priority: '' });
+  const [selected, setSelected] = useState<{ type: string; id: string }[]>([]);
+  const [error, setError] = useState('');
+  const select = (type: string, id: string) => setSelected((current) => current.some((item) => item.type === type && item.id === id) ? current.filter((item) => item.type !== type || item.id !== id) : [...current, { type, id }]);
 
   const fetchWorkData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/my-work?period=${period}`);
-      const json = await res.json();
+      const json = await requestJson(`/api/my-work?${new URLSearchParams({ period, ...filters })}`);
       setData(json);
+      setError('');
     } catch (err) {
-      console.error(err);
+      setError(String(err));
     } finally {
       setLoading(false);
     }
@@ -89,12 +95,13 @@ export default function MyWorkView() {
 
   useEffect(() => {
     fetchWorkData();
-  }, [period]);
+    setSelected([]);
+  }, [period, filters]);
 
   const handleToggleTask = async (taskId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'done' ? 'open' : 'done';
     try {
-      await fetch('/api/tasks', {
+      await requestJson('/api/tasks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: taskId, status: nextStatus })
@@ -108,7 +115,7 @@ export default function MyWorkView() {
   const handleResolveFollowUp = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'resolved' ? 'waiting' : 'resolved';
     try {
-      await fetch('/api/followups', {
+      await requestJson('/api/followups', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: nextStatus })
@@ -176,14 +183,16 @@ export default function MyWorkView() {
       </div>
 
       {/* Filter Tabs */}
+      <WorkControls filters={filters} period={period} onChange={setFilters} onPeriod={setPeriod} selected={selected} onUpdated={() => { setSelected([]); fetchWorkData(); }} />
+      {error && <p role="alert" className="work-error">{error}</p>}
       <div className="tabs">
-        {(['today', 'this_week', 'overdue', 'all'] as const).map((p) => (
+        {(['today', 'this_week', 'overdue', 'waiting', 'all'] as const).map((p) => (
           <button
             key={p}
             className={`tab ${period === p ? 'active' : ''}`}
             onClick={() => setPeriod(p)}
           >
-            {p === 'today' ? 'Today' : p === 'this_week' ? 'This Week' : p === 'overdue' ? 'Overdue' : 'All'}
+            {p === 'today' ? 'Today' : p === 'this_week' ? 'This Week' : p === 'overdue' ? 'Overdue' : p === 'waiting' ? 'Waiting' : 'All'}
           </button>
         ))}
       </div>
@@ -228,6 +237,7 @@ export default function MyWorkView() {
             <div className="entity-list">
               {tasks.map(task => (
                 <div className="entity-card" key={task.id}>
+                  <label><input type="checkbox" checked={selected.some((item) => item.type === 'task' && item.id === task.id)} onChange={() => select('task', task.id)} /> Select</label>
                   <div className="entity-card-header">
                     <Link href={`/tasks/${task.id}`} style={{ textDecoration: 'none' }}>
                       <h4 className="entity-card-title" style={{ textDecoration: task.status === 'done' ? 'line-through' : 'none', color: task.status === 'done' ? 'var(--text-muted)' : 'inherit' }}>
@@ -272,6 +282,7 @@ export default function MyWorkView() {
             <div className="entity-list">
               {followups.map(followup => (
                 <div className="entity-card" key={followup.id}>
+                  <label><input type="checkbox" checked={selected.some((item) => item.type === 'followup' && item.id === followup.id)} onChange={() => select('followup', followup.id)} /> Select</label>
                   <div className="entity-card-header">
                     <h4 className="entity-card-title" style={{ textDecoration: followup.status === 'resolved' ? 'line-through' : 'none' }}>
                       {followup.title}

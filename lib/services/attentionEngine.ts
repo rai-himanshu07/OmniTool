@@ -41,7 +41,7 @@ export function getAttentionItems(): AttentionItem[] {
       `SELECT t.*, p.name as project_name 
        FROM tasks t 
        LEFT JOIN projects p ON t.project_id = p.id 
-       WHERE t.workspace_id = ? AND t.status NOT IN ('done', 'cancelled') AND t.due_date < ? 
+      WHERE t.workspace_id = ? AND t.archived = 0 AND t.status NOT IN ('done', 'cancelled') AND t.due_date < ?
        ORDER BY t.due_date ASC`
     )
     .all(wsId, todayStr) as (Task & { project_name?: string })[];
@@ -73,13 +73,13 @@ export function getAttentionItems(): AttentionItem[] {
        FROM followups f 
        LEFT JOIN projects p ON f.project_id = p.id 
        LEFT JOIN tasks t ON f.task_id = t.id 
-       WHERE f.workspace_id = ? AND f.status = 'waiting' 
+      WHERE f.workspace_id = ? AND f.archived = 0 AND f.status = 'waiting'
        ORDER BY f.created_at ASC`
     )
     .all(wsId) as (Followup & { project_name?: string; task_title?: string })[];
 
   for (const f of followups) {
-    const createdDate = new Date(f.created_at);
+    const createdDate = new Date(f.last_activity_at);
     const waitingDays = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
     if (waitingDays >= 2 || f.priority === 'critical' || f.priority === 'high') {
@@ -103,7 +103,7 @@ export function getAttentionItems(): AttentionItem[] {
       `SELECT p.*, c.name as client_name 
        FROM projects p 
        LEFT JOIN clients c ON p.client_id = c.id 
-       WHERE p.workspace_id = ? AND p.status NOT IN ('completed')`
+      WHERE p.workspace_id = ? AND p.archived = 0 AND p.status NOT IN ('completed')`
     )
     .all(wsId) as (Project & { client_name?: string })[];
 
@@ -136,18 +136,19 @@ export function getCalculatedProjectHealth(projectId: string): 'green' | 'amber'
     | undefined;
 
   if (!proj) return 'green';
+  if (proj.status === 'completed') return 'green';
   if (proj.status_override && ['green', 'amber', 'red'].includes(proj.status_override)) {
     return proj.status_override as 'green' | 'amber' | 'red';
   }
 
   const overdueCount = (
-    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(projectId, todayStr) as { c: number }
+    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(projectId, todayStr) as { c: number }
   ).c;
 
   const criticalOverdue = (
     db
       .prepare(
-        `SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND status NOT IN ('done', 'cancelled') AND due_date < ? AND priority IN ('critical', 'high')`
+        `SELECT COUNT(*) as c FROM tasks WHERE project_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date < ? AND priority IN ('critical', 'high')`
       )
       .get(projectId, todayStr) as { c: number }
   ).c;
@@ -155,7 +156,7 @@ export function getCalculatedProjectHealth(projectId: string): 'green' | 'amber'
   const stalledFollowups = (
     db
       .prepare(
-        `SELECT COUNT(*) as c FROM followups WHERE project_id = ? AND status = 'waiting' AND julianday('now') - julianday(last_activity_at) > 3`
+        `SELECT COUNT(*) as c FROM followups WHERE project_id = ? AND archived = 0 AND status = 'waiting' AND julianday('now') - julianday(last_activity_at) > 3`
       )
       .get(projectId) as { c: number }
   ).c;
@@ -171,15 +172,15 @@ export function getDashboardMetrics(): DashboardMetrics {
   const todayStr = new Date().toISOString().split('T')[0];
 
   const overdue = (
-    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE workspace_id = ? AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(wsId, todayStr) as { c: number }
+    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE workspace_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date < ?`).get(wsId, todayStr) as { c: number }
   ).c;
 
   const dueToday = (
-    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE workspace_id = ? AND status NOT IN ('done', 'cancelled') AND due_date = ?`).get(wsId, todayStr) as { c: number }
+    db.prepare(`SELECT COUNT(*) as c FROM tasks WHERE workspace_id = ? AND archived = 0 AND status NOT IN ('done', 'cancelled') AND due_date = ?`).get(wsId, todayStr) as { c: number }
   ).c;
 
   const activeFollowups = (
-    db.prepare(`SELECT COUNT(*) as c FROM followups WHERE workspace_id = ? AND status IN ('waiting', 'escalated')`).get(wsId) as { c: number }
+    db.prepare(`SELECT COUNT(*) as c FROM followups WHERE workspace_id = ? AND archived = 0 AND status IN ('waiting', 'escalated')`).get(wsId) as { c: number }
   ).c;
 
   const rawInbox = (
@@ -191,10 +192,10 @@ export function getDashboardMetrics(): DashboardMetrics {
   ).c;
 
   const meetingsToday = (
-    db.prepare(`SELECT COUNT(*) as c FROM calendar_events WHERE workspace_id = ? AND substr(start_time, 1, 10) = ?`).get(wsId, todayStr) as { c: number }
+    db.prepare(`SELECT COUNT(*) as c FROM calendar_events WHERE workspace_id = ? AND archived = 0 AND substr(start_time, 1, 10) = ?`).get(wsId, todayStr) as { c: number }
   ).c;
 
-  const projects = db.prepare(`SELECT id, status FROM projects WHERE workspace_id = ? AND status NOT IN ('completed')`).all(wsId) as { id: string; status: string }[];
+  const projects = db.prepare(`SELECT id, status FROM projects WHERE workspace_id = ? AND archived = 0 AND status NOT IN ('completed')`).all(wsId) as { id: string; status: string }[];
 
   let g = 0,
     a = 0,

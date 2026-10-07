@@ -11,12 +11,14 @@ import {
   FileText,
   Inbox,
   ArrowRight,
-  CornerDownLeft
+  CornerDownLeft,
+  BookOpen
 } from 'lucide-react';
 
 interface SearchResult {
   entity_type: string;
   entity_id: string;
+  href: string;
   title: string;
   snippet?: string;
   project_name?: string;
@@ -33,6 +35,7 @@ const TYPE_META: Record<string, { icon: typeof Search; label: string; route: str
   followup: { icon: Clock, label: 'Follow-up', route: '/followups' },
   note: { icon: FileText, label: 'Note', route: '/notes' },
   inbox: { icon: Inbox, label: 'Inbox', route: '/inbox' },
+  notebook: { icon: BookOpen, label: 'Notebook page', route: '/notebooks' },
 };
 
 export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
@@ -74,7 +77,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const navigateToResult = (result: SearchResult) => {
     const meta = TYPE_META[result.entity_type];
     if (meta) {
-      router.push(meta.route);
+      router.push(result.href || meta.route);
     }
     onClose();
   };

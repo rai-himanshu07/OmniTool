@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb, getDefaultWorkspaceId } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, Subtask, TaskDependency } from '@/lib/db/schema';
+import { getAccess } from '@/lib/services/workspaceAccess';
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
       SELECT t.*, p.name as project_name 
       FROM tasks t 
       LEFT JOIN projects p ON t.project_id = p.id 
-      WHERE t.workspace_id = ?
+      WHERE t.workspace_id = ? AND t.archived = 0
     `;
     const params: any[] = [wsId];
 
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const access = await getAccess(request, ['admin', 'member']);
     const body = await request.json();
     const { title, description, project_id, owner, priority, due_date } = body;
 
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
       project_id || null,
       title,
       description || null,
-      owner || 'Himanshu',
+      owner || access.user.name,
       'open',
       priority || 'medium',
       due_date || null,

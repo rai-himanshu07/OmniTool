@@ -41,6 +41,16 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
 }
 
 function runMigrations(db: Database.Database) {
+  for (const table of ['notes', 'notebooks']) {
+    ensureColumn(db, table, 'owner_user_id', 'TEXT');
+    ensureColumn(db, table, 'visibility', "TEXT NOT NULL DEFAULT 'shared'");
+  }
+  for (const table of ['tasks', 'notes', 'projects', 'followups', 'calendar_events']) ensureColumn(db, table, 'archived', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'tasks', 'estimated_minutes', 'INTEGER NOT NULL DEFAULT 30');
+  ensureColumn(db, 'tasks', 'source_event_id', 'TEXT');
+  ensureColumn(db, 'followups', 'source_event_id', 'TEXT');
+  ensureColumn(db, 'reminders', 'user_id', 'TEXT');
+  ensureColumn(db, 'notifications', 'user_id', 'TEXT');
   ensureColumn(db, 'recurrence_instances', 'task_id', 'TEXT');
   ensureColumn(db, 'secure_vault_meta', 'kdf_iterations', 'INTEGER NOT NULL DEFAULT 100000');
   ensureColumn(db, 'calendar_events', 'calendar_source_id', 'TEXT');

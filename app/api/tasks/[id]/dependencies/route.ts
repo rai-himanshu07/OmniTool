@@ -16,6 +16,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (depends_on_task_id === params.id) {
       return NextResponse.json({ error: 'A task cannot depend on itself' }, { status: 400 });
     }
+    const taskCount = (db.prepare('SELECT COUNT(*) AS count FROM tasks WHERE id IN (?, ?) AND workspace_id = ? AND archived = 0').get(params.id, depends_on_task_id, wsId) as { count: number }).count;
+    if (taskCount !== 2) return NextResponse.json({ error: 'Active workspace tasks are required' }, { status: 404 });
+    if (dependency_type && !['blocking', 'related'].includes(dependency_type)) return NextResponse.json({ error: 'Invalid dependency type' }, { status: 400 });
+    if (dependency_type !== 'related' && db.prepare(`WITH RECURSIVE chain(id) AS (SELECT ? UNION SELECT d.depends_on_task_id FROM task_dependencies d JOIN chain ON d.task_id = chain.id WHERE d.dependency_type = 'blocking') SELECT id FROM chain WHERE id = ?`).get(depends_on_task_id, params.id)) return NextResponse.json({ error: 'This dependency would create a cycle' }, { status: 409 });
 
     const existing = db
       .prepare(`SELECT id FROM task_dependencies WHERE task_id = ? AND depends_on_task_id = ?`)

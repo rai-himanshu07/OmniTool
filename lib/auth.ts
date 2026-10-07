@@ -7,11 +7,19 @@ import { getAuthSecret } from './services/serverCrypto';
 
 const db = getDb();
 const baseURL = process.env.BETTER_AUTH_URL || 'http://127.0.0.1:3000';
+const authOrigin = new URL(baseURL);
+const trustedOrigins = [authOrigin.origin];
+if (['localhost', '127.0.0.1'].includes(authOrigin.hostname)) {
+  const loopbackOrigin = new URL(authOrigin);
+  loopbackOrigin.hostname = authOrigin.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+  trustedOrigins.push(loopbackOrigin.origin);
+}
 const tokenHash = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 export const auth = betterAuth({
   database: db,
   baseURL,
+  trustedOrigins,
   secret: getAuthSecret(),
   emailAndPassword: { enabled: true, minPasswordLength: 12 },
   session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },

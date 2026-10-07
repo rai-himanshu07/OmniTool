@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Check, CheckCheck, X, AlertTriangle, Clock, Calendar, RefreshCw, Inbox, BellRing } from 'lucide-react';
+import Link from 'next/link';
+import { requestJson } from '@/lib/client';
 
 interface Notification {
   id: string;
@@ -33,7 +35,7 @@ export default function NotificationPanel() {
 
       // Fire a native browser notification for unread items we haven't seen
       // yet (skip the very first load so a page refresh doesn't replay backlog).
-      if (browserPermission === 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
+      if (data.desktop_allowed && browserPermission === 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
         if (seenIdsRef.current) {
           for (const n of list) {
             if (!n.is_read && !seenIdsRef.current.has(n.id)) {
@@ -206,6 +208,7 @@ export default function NotificationPanel() {
           )}
 
           {/* Notification List */}
+          <div style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>Alerts require an open app. <Link href="/preferences">Preferences</Link></div>
           <div style={{ overflowY: 'auto', maxHeight: '400px' }}>
             {loading && notifications.length === 0 && (
               <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading...</div>
@@ -236,6 +239,7 @@ export default function NotificationPanel() {
                   <div style={{ fontSize: '0.85rem', fontWeight: n.is_read ? 400 : 600, color: 'var(--text-primary)' }}>{n.title}</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{formatTime(n.created_at)}</div>
+                  <button className="btn-secondary" onClick={async (event) => { event.stopPropagation(); try { await requestJson('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [n.id], snooze_minutes: 60 }) }); setNotifications((current) => current.filter((item) => item.id !== n.id)); } catch (error) { console.error(error); } }}>Snooze 1h</button>
                 </div>
                 {!n.is_read && (
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-primary)', flexShrink: 0, marginTop: '0.25rem' }} />

@@ -4,6 +4,10 @@ OmniTool is a browser-based work command centre that brings projects, tasks, fol
 
 Built for individuals and small teams coordinating client or internal work, especially when deadlines, approvals, and trackers are scattered across spreadsheets, calendars, and conversations. You host it on your own computer or private server, keep control of your data, and can use the core workflows without AI.
 
+![OmniTool Today dashboard after sign-in, showing demo projects, focus plan, meetings, and follow-ups](docs/screenshots/dashboard.png)
+
+*The signed-in dashboard, shown with demo data.*
+
 OmniTool is free software under [GNU GPL version 3 only](LICENSE), provided without warranty. Dependency and font licenses remain separate; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Getting Started

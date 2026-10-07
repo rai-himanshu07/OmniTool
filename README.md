@@ -1,8 +1,14 @@
 # OmniTool
 
+OmniTool is a browser-based work command centre that brings projects, tasks, follow-ups, meetings, and notes into one place. It helps you see what needs attention, capture new requests quickly, and keep track of commitments across projects.
+
+Built for individuals and small teams coordinating client or internal work, especially when deadlines, approvals, and trackers are scattered across spreadsheets, calendars, and conversations. You host it on your own computer or private server, keep control of your data, and can use the core workflows without AI.
+
 OmniTool is free software under [GNU GPL version 3 only](LICENSE), provided without warranty. Dependency and font licenses remain separate; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Self-hosted, personal-first work command centre. Requires Node.js 20.9+.
+## Getting Started
+
+Requires Node.js 20.9+.
 
 ```bash
 npm install
